@@ -6,3 +6,7 @@
 
 MODULE = Example            PACKAGE = Example
 
+void
+hello()
+    CODE:
+        printf("Hello, world!\n");
