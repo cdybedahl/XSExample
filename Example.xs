@@ -30,3 +30,16 @@ hello3(str)
     }
     OUTPUT:
         RETVAL
+
+SV *
+hello4(str)
+    SV *str;
+    CODE:
+    {
+        SV *buf = newSVpvs("Hello, ");
+        sv_catpvn(buf, SvPV_nolen(str), SvCUR(str));
+        sv_catpvs(buf, "!\n");
+        RETVAL = buf;
+    }
+    OUTPUT:
+        RETVAL
