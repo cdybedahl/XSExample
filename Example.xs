@@ -7,6 +7,26 @@
 MODULE = Example            PACKAGE = Example
 
 void
-hello()
+hello1()
     CODE:
         printf("Hello, world!\n");
+
+
+char *
+hello2()
+    CODE:
+        RETVAL = "Hello, World!\n";
+    OUTPUT:
+        RETVAL
+
+char *
+hello3(str)
+    char *str;
+    CODE:
+    {
+        char *buf = calloc(10+strlen(str),sizeof(char));
+        sprintf(buf, "Hello, %s!\n", str);
+        RETVAL = buf;
+    }
+    OUTPUT:
+        RETVAL
