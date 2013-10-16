@@ -228,7 +228,7 @@ Anyway. Reference counts. All perl values have one. When you create something it
 
 The answer is actually "nothing". The code is correct as given. One part of the reason why is another bit of `RETVAL` magic. If you use `RETVAL` to return an `SV`, that `SV` will automatically be marked as _mortal_. The other part of the reason why is the concept of mortal values. Marking a value as mortal tells perl that you don't really care about the value, but you need it to hang around just a little longer. Long enough for it to be returned to the caller and used in a comparison, say. Or returned and being assigned to a varaible. In which case its reference count would first be increased to 2 at the assignment, and then decreased to 1 again whenever the mortality kicked in. When it does is deliberately not specified. All you as the programmer know is that it will happen [soon](http://www.wowwiki.com/Soon).
 
-Anyway. In `hello4()` the mortality was handled by the `RETVAL` magic. In `numbers1()`, it's handled by the `mXPUSHi()` macro. In general, if you're using a function of macro that creates `SV`s for you as a part of doing something else, it'll probably also mark it as mortal for you. But if you create one specifically, you have to mark it as mortal yourself. Here's an alternative way of returning a list of three numbers:
+Anyway. In `hello4()` the mortality was handled by the `RETVAL` magic. In `numbers1()`, it's handled by the `mXPUSHi()` macro. In general, if you're using a function or macro that creates `SV`s for you as a part of doing something else, it'll probably also mark them as mortal. But if you create one specifically, you have to mark it as mortal yourself. Here's an alternative way of returning a list of three numbers:
 
 ```
     SV *
