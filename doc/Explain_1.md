@@ -183,6 +183,62 @@ Looking up `sv_setpv()` in `perlapi`, we see that it simply copies a nul-termina
 
 C functions can only return a single value. Perl functions frequently return several. So a fair part of turning a C-like interface into a Perl-like interface will be turning C's "send a pointer for the function to put stuff in" interfaces into Perl's "send and return lists" interfaces. Which makes it useful to know how to write an XSUB (that is, an XS function like the ones we've been working with so far) that builds and returns a list.
 
-At this point, you may think "Hey, that's easy! I read perlapi and saw all those functions dealing with AVs, I'll just make one of those and return it!". Which makes sense. Unfortunately, it's dead wrong. You don't notice it much while working at the Perl level, but there is a difference between lists and arrays, and when we're digging around down here we notice it a lot. There are functions and macros that deal with AV (Array Value) objects and HV (Hash Value) objects, but what we return from a function is a list, not an array. If you try returning an AV, you'll find that the standard typemap turns it into an RV (Reference Value), and what you get in your Perl code is a reference to the array you built. Which is useful, but not what we wanted here.
+At this point, you may think "Hey, that's easy! I read perlapi and saw all those functions dealing with AVs, I'll just make one of those and return it!". Which makes sense. Unfortunately, it's dead wrong. You don't notice it much while working at the Perl level, but there is a difference between lists and arrays, and when we're digging around down here we notice it a lot. There are functions and macros that deal with AV (Array Value) objects and HV (Hash Value) objects, but what we return from a function is a list, not an array. If you try returning an AV, you'll find that the standard typemap wraps it in an RV (Reference Value), and what you get in your Perl code is a reference to the array you built. Which is useful, but not what we wanted here.
 
-So what do we do here? Well, conceptually it's simple. We put stuff on the return stack. Which is actually what the RETVAL magic does too, except it always puts a single value there. If we want to return more than one value, we have to forego the magic and do the work ourselves.
+So what do we do here? Well, conceptually it's simple. We put stuff on the return stack. Which is actually what the RETVAL magic does too, except it always puts a single value there. If we want to return more than one value, we have to forego the magic and do the work ourselves. To help us do that, there are a number of macros. To see some of them in action, let's build a function that returns a list of three numbers.
+
+```
+    SV *
+    numbers1()
+        PPCODE:
+            mXPUSHi(17);
+            mXPUSHi(42);
+            mXPUSHi(4711);
+```
+
+Looks easy enough, doesn't it? We recognize the basic structure, even if most of the detail is as yet unfamiliar. Let's go through them bit by bit. The `SV *` return code is recommended by the documentation for the cases where we're returning something that's not a simple C type, so that's what we use here. There used to be a recommendation to use `void`, but apparently that caused problems for some combination of operating systems, C compilers and such. `numbers1()` gives the function its name and declares that it takes no arguments, as we've seen before. `PPCODE` is new. Basically, it says that we'll be handling putting things on the return stack ourselves. With the `CODE` we've used so far, there can only be zero or one returned value, and it's handled via `RETVAL`. With `PPCODE`, there can be any number (including zero), but we have to put them onto the stack ourselves, and also make sure that the stack has enough room for them. Which brings us to the most complicated bit of this explanation: `mXPUSHi()`. This is one of a large number of related macros with fairly logically made-up names. The central bit is "PUSH", which describes what's being done: pushing something onto the return stack. The final "i" says that what we're pusing is an integer. The "X" says that the stack will be automatically extended to make room for the push, if needed. I don't know what the "m" is supposed to be mnemonic for, but its meaning is basically to make sure to use a freshly created `SV` to store the data. Without the "m", the system may elect to reuse a spare `SV` it has lying around. Which is bad, since what gets stored is really the C pointer to the `SV`, so if the same one gets used more than once on the same stack the later values will overwrite the earlier ones. Which would be bad.
+
+So. What we do when we say `mXPUSHi(17)` is to create a new `SV`, store an `IV` (that is, Integer Value) with the value 17 in it, make the `SV` mortal, make sure there's a free spot on the stack, and then put the address of the `SV` on the stack. Easy to use, although a lot happens behind the scenes when you use it. As mentioned, there are lots of `PUSH` variants. They're all listed in perlapi. There you can also find macros to manually extend the stack by a given number of entries, and ways of accessing those entries directly. The example above is not even close to being the only way you can put three numbers on the return stack.
+
+And at this point you should, if you've been paying attention, be wondering what the frack "make the `SV` mortal" means.
+
+# The lifecycle of `SV`s
+
+This is where we finally get into Perl's memory management. As you are probably aware, Perl uses [reference-counting garbage collection](https://en.wikipedia.org/wiki/Garbage_collection_%28computer_science%29#Reference_counting). This works transparently (mostly) at the Perl level, where perl itself is creating and destroying your objects. But now we are creating and destroying things outside its control. So we need to take care to get the reference counts right.
+
+Oh, and we need to take care of memory we allocate ourselves too, of course. Go back and have a look at our `hello3()` example. See how we do a `calloc()` but no `free()`? Yeah, that code leaks memory. The standard typemap for `char *` uses `sv_setpv()` when it converts from C to Perl, and that functions copies the C string into an `SV`, after which it doesn't touch the C string again. So we need to free it ourselves -- but not until perl has copied it. In order to do that, we need to introduce a new XSUB section:
+
+```
+    char *
+    hello5(str)
+        char *str;
+        CODE:
+            char *buf = calloc(10+strlen(str),sizeof(char));
+            sprintf(buf, "Hello, %s!\n", str);
+            RETVAL = buf;
+        OUTPUT:
+            RETVAL
+        CLEANUP:
+            Safefree(buf);
+```
+
+Most of that is intact from before. The difference is that the braces enclosing the `CODE` section are gone, and a `CLEANUP` section is added. The braces had to go in order to make the `buf` variable visible in the `CLEANUP` section, so it can be freed there (by the way, read about `PREINIT` in the perlxs documentation page to see how to solve the problem I put in the braces for under these circumstances). `Safefree()` is a utility function perl provides to hide all the quirks in all the different environments where Perl can run. It's documented in the perlclib documentation page, along with its many siblings. We shouldn't really have used a raw `calloc()` like that, for example. Fixing that is left as an exercise for the reader.
+
+Anyway. Reference counts. All perl values have one. When you create something it usually gets its reference count set to 1, on the assupmtion that you want to keep it around for a bit. Earlier, in `hello4()`, we used `newSVpvs()` to create an `SV` holding a string, for example. That started out with a reference count of 1, which we never changed. It got returned to, in our case, the test script, where it was compared to a another string and never used again. Which also sounds like a memory leak, doesn't it? Our `SV` started out with a reference count of 1, nothing ever decreased it, and so it'll never get garbage collected. But if we decrement the reference count of it in our function (using `SvREFCNT_dec()`), not only doesn't it work as intended, the perl interpreter actually crashes! What to do?
+
+The answer is actually "nothing". The code is correct as given. One part of the reason why is another bit of `RETVAL` magic. If you use `RETVAL` to return an `SV`, that `SV` will automatically be marked as _mortal_. The other part of the reason why is the concept of mortal values. Marking a value as mortal tells perl that you don't really care about the value, but you need it to hang around just a little longer. Long enough for it to be returned to the caller and used in a comparison, say. Or returned and being assigned to a varaible. In which case its reference count would first be increased to 2 at the assignment, and then decreased to 1 again whenever the mortality kicked in. When it does is deliberately not specified. All you as the programmer know is that it will happen [soon](http://www.wowwiki.com/Soon).
+
+Anyway. In `hello4()` the mortality was handled by the `RETVAL` magic. In `numbers1()`, it's handled by the `mXPUSHi()` macro. In general, if you're using a function of macro that creates `SV`s for you as a part of doing something else, it'll probably also mark it as mortal for you. But if you create one specifically, you have to mark it as mortal yourself. Here's an alternative way of returning a list of three numbers:
+
+```
+    SV *
+    numbers2()
+        PPCODE:
+            EXTEND(SP,3);
+            ST(0) = sv_2mortal(newSViv(17));
+            ST(1) = sv_2mortal(newSViv(42));
+            ST(2) = sv_2mortal(newSViv(4711));
+            XSRETURN(3);
+```
+
+At this point you could probably just look up the various functions in perlapi and figure out how this works, but let's talk through it anyway. `EXTEND` is a macro that makes sure there's enough space on the stack. When I try it, the code still seems to work fine without that line, but the way the documentation is worded makes me think that the way it works is that it _may_ work without the `EXTEND`, but that it _will_ work with it. So I left it in. `ST()` is a macro used to access stack entries. Here we use it to put `SV`s on the stack. `sv_2mortal()` does exactly what it says on the label, it turns an `SV` mortal. `newSViv()` creates a fresh new SV holding an IV, and finally `XSRETURN()` returns from the function with three things on the return stack. If the number you give here is less than the number of things you've put on the stack, some things will get lost. If the number you give here is greater than the number of things you put on the stack, whatever garbage was in the extra memory locations will be returned. Which may, depending on circumstances and luck, cause garbage data in your program, your program crashing, the perl interpreter crashing or an exploitable security hole. So make sure to get that number right. Or use the `PUSH` macros, which keep count for you.

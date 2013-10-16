@@ -44,13 +44,30 @@ hello4(str)
     OUTPUT:
         RETVAL
 
-AV *
-arrayret()
+SV *
+numbers1()
+    PPCODE:
+        mXPUSHi(17);
+        mXPUSHi(42);
+        mXPUSHi(4711);
+
+char *
+hello5(str)
+    char *str;
     CODE:
-        SV *list[3];
-        list[0] = sv_2mortal(newSViv(1));
-        list[1] = sv_2mortal(newSViv(2));
-        list[2] = sv_2mortal(newSViv(3));
-        RETVAL = av_make(3, list );
+        char *buf = calloc(10+strlen(str),sizeof(char));
+        sprintf(buf, "Hello, %s!\n", str);
+        RETVAL = buf;
     OUTPUT:
         RETVAL
+    CLEANUP:
+        Safefree(buf);
+
+SV *
+numbers2()
+    PPCODE:
+        EXTEND(SP,3);
+        ST(0) = sv_2mortal(newSViv(17));
+        ST(1) = sv_2mortal(newSViv(42));
+        ST(2) = sv_2mortal(newSViv(4711));
+        XSRETURN(3);
