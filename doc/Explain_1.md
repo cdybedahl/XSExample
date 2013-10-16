@@ -165,13 +165,24 @@ The first part is pretty straightforward, and makes it rather obvious why the tr
 
 The next part (under the line of hash marks) is called `INPUT`. Those are the rules for going from Perl values to C values. If you search down a bit, you'll eventually find an entry that looks like this:
 
+```
     T_PV
         $var = ($type)SvPV_nolen($arg)
+```
 
 Without even knowing the exact rules for typemaps, we can guess how that works. In order to assign an argument to a C variable, XS runs `SvPV_nolen()` on the argument and typecasts the result to the exact type variant wanted at the C level. So that's how the Perl string "Hello" in our test code got converted to the corresponding C string that the function `hello3()` wanted. If we keep reading down the typemap file, we soon come to the last section, naturally enough called `OUTPUT`. In that section, we can find this:
 
+```
     T_PV
         sv_setpv((SV*)$arg, $var);
+```
 
 Looking up `sv_setpv()` in `perlapi`, we see that it simply copies a nul-terminated string pointed at by its second argument into an `SvPV` pointed at by its first argument. So that's how the C string `buf` in `hello3()` gets converted to a Perl string that `Test::More` can use. Conceptually, both the input and output stages are quite straighforward and easy to understand. It's just that, as always with C, there are a vast amount of details that must be exactly right (and we haven't even mentioned memory management yet). But for the moment, we have at least a basic grasp of what's going on.
 
+# Returning a list
+
+C functions can only return a single value. Perl functions frequently return several. So a fair part of turning a C-like interface into a Perl-like interface will be turning C's "send a pointer for the function to put stuff in" interfaces into Perl's "send and return lists" interfaces. Which makes it useful to know how to write an XSUB (that is, an XS function like the ones we've been working with so far) that builds and returns a list.
+
+At this point, you may think "Hey, that's easy! I read perlapi and saw all those functions dealing with AVs, I'll just make one of those and return it!". Which makes sense. Unfortunately, it's dead wrong. You don't notice it much while working at the Perl level, but there is a difference between lists and arrays, and when we're digging around down here we notice it a lot. There are functions and macros that deal with AV (Array Value) objects and HV (Hash Value) objects, but what we return from a function is a list, not an array. If you try returning an AV, you'll find that the standard typemap turns it into an RV (Reference Value), and what you get in your Perl code is a reference to the array you built. Which is useful, but not what we wanted here.
+
+So what do we do here? Well, conceptually it's simple. We put stuff on the return stack. Which is actually what the RETVAL magic does too, except it always puts a single value there. If we want to return more than one value, we have to forego the magic and do the work ourselves.

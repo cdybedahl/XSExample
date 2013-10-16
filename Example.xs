@@ -43,3 +43,14 @@ hello4(str)
     }
     OUTPUT:
         RETVAL
+
+AV *
+arrayret()
+    CODE:
+        SV *list[3];
+        list[0] = sv_2mortal(newSViv(1));
+        list[1] = sv_2mortal(newSViv(2));
+        list[2] = sv_2mortal(newSViv(3));
+        RETVAL = av_make(3, list );
+    OUTPUT:
+        RETVAL
