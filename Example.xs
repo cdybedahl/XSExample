@@ -71,3 +71,15 @@ numbers2()
         ST(1) = sv_2mortal(newSViv(42));
         ST(2) = sv_2mortal(newSViv(4711));
         XSRETURN(3);
+
+int
+testing(...)
+    CODE:
+        int i;
+        for(i=0;i<items;i++)
+        {
+            printf("Testing (%s)\n", SvPV_nolen(ST(i)));
+        }
+        RETVAL = 17;
+    OUTPUT:
+        RETVAL

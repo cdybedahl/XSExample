@@ -200,7 +200,7 @@ Looks easy enough, doesn't it? We recognize the basic structure, even if most of
 
 So. What we do when we say `mXPUSHi(17)` is to create a new `SV`, store an `IV` (that is, Integer Value) with the value 17 in it, make the `SV` mortal, make sure there's a free spot on the stack, and then put the address of the `SV` on the stack. Easy to use, although a lot happens behind the scenes when you use it. As mentioned, there are lots of `PUSH` variants. They're all listed in perlapi. There you can also find macros to manually extend the stack by a given number of entries, and ways of accessing those entries directly. The example above is not even close to being the only way you can put three numbers on the return stack.
 
-And at this point you should, if you've been paying attention, be wondering what the frack "make the `SV` mortal" means.
+And at this point you should, if you've been paying attention, be wondering what the frak "make the `SV` mortal" means.
 
 # The lifecycle of `SV`s
 
