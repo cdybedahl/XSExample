@@ -290,7 +290,102 @@ The intermediate value is needed because there is only one stack. The incoming a
 
 If you haven't figured out the exercise for the reader after the previous example, you can get a hint from this one by adding a mandatory first argument of type `char *`, call it with a series of numbers and watch the results.
 
-So now we can both accept and return variable numbers of arguments. Sweet! We're done! ...or maybe not quite. We haven't looked at actual arrays yet. Or hashes. Or references. Or, perhaps most interesting, objects. Let's start with arrays and hashes.
+So now we can both accept and return variable numbers of arguments. Sweet! We're done! ...or maybe not quite. We haven't looked at actual arrays yet. Or hashes. Or references. Or, perhaps most interesting, objects. Actually, let's do objects next.
 
-# Containers
+# Orienting Objects
 
+A perl object is simply a reference that's been associated with a package. A method is nothing more than a function that expects such a reference as its first argument. And, as it turns out, we can set up an `RV` to hold a C pointer. Which makes no sense at the Perl level, but at the XS level we're talking about here it means that Perl objects can be C data structures. This is entirely intentional on behalf of the Perl developers. The `xsubpp` preprocessor and the standard typemap will both help us do it. So let's have a go at it. Let's make one of the standard example classes from nearly all OO literature ever: a point in a Cartesian coordinate system.
+
+Also, just because we're lazy, let's squeeze it into the `Example` module we're already using. We begin by adding the C data type we need to represent our points. _Above_ the `MODULE` keyword in `Example.xs`, add these declarations.
+
+```
+    typedef struct {
+        double x;
+        double y;
+    } point;
+    
+    typedef point *Example;
+```
+
+So that is a struct called `point`, with two floating point members called `x` and `y`, plus a data type `Example` that's a pointer to a `point`. The next thing we'll do is to tell `xsubpp` what to do when it sees `Example` in an XSUB declaration. The way we do that is with a typemap entry. Since this is the first time we'll be using one of those beyond the standard ones that come with Perl, the first thing we need to do is to create a new file called, imaginatively enough, `typemap`. In that file, put this single line:
+
+```
+    Example     T_PTROBJ
+```
+
+You can look up `T_PTROBJ` in the standard typemap (`perldoc -m ExtUtils::typemap`, if you don't remember the easy way to look at it) to see what will happen when going between the Perl and C worlds via the `Example` route. The input section is pretty scary, and I by no means understand all of it, but it's pretty clear that it checks that the reference value looks sane and then converts it to a C pointer. The output direction is much simpler, it just uses the `sv_setref_pv()` function to wrap the pointer in an `SV` and an `RV` and blesses the `RV` into the package with the same name as the datatype. That is why we have the second `typedef` above, by the way. If we hadn't put it in, `xsubpp` would've auto-generated a name from the C data type (`point *`) and the object would have ended up blessed into the class `pointPtr`.
+
+So far so good. The next thing we need is a constructor. Traditionally, that's a class method called `new`. Let's go with that.
+
+```
+    Example
+    new(class,xval,yval)
+        char *class;
+        double xval;
+        double yval;
+        CODE:
+        {
+            Example obj;
+    
+            Newx(self, 1, point);
+            self->x = xval;
+            self->y = yval;
+            RETVAL = self;
+        }
+        OUTPUT:
+            RETVAL
+```
+
+There is really nothing strange here. The only new bit is `Newx()`, and that's simply the recommended wrapper for `malloc()`. To check that this works as intended, let's add a couple of lines to `t/00-example.t`. Which I have been adding things to along the way, I've just been too lazy to mention them here. Anyway.
+
+```
+    my $obj = Example->new(1.0,2.0);
+    isa_ok($obj, 'Example');
+```
+
+Compile, run tests and it should work beautifully. We have a Perl object implemented as a C struct! Let's add a method. Or methods, even. Setters and getters seems like obvious things to want to have.
+
+```
+    double
+    get_x(self)
+        Example self;
+        CODE:
+            RETVAL = self->x;
+        OUTPUT:
+            RETVAL
+    
+    double
+    get_y(self)
+        Example self;
+        CODE:
+            RETVAL = self->y;
+        OUTPUT:
+            RETVAL
+    
+    void
+    set_x(self, xval)
+        Example self;
+        double xval;
+        CODE:
+            self->x = xval;
+    
+    void
+    set_y(self, yval)
+        Example self;
+        double yval;
+        CODE:
+            self->y = yval;
+```
+
+Let's mention the tests this time:
+
+```
+    is($obj->get_x, 1.0);
+    is($obj->get_y, 2.0);
+    $obj->set_x(0);
+    $obj->set_y(0);
+    is($obj->get_x, 0.0);
+    is($obj->get_y, 0.0);
+```
+
+And at least when I run it, it works.
