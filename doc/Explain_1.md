@@ -388,4 +388,34 @@ Let's mention the tests this time:
     is($obj->get_y, 0.0);
 ```
 
-And at least when I run it, it works.
+And at least when I run it, it works. I don't think there's all that much to say about these functions. They're exactly like ones we've seen before, except they use the normal Perl object calling convention with the pointer to the object as the first argument, and that argument has the `Example` type.
+
+# Hashes and arrays
+
+I guess we should say something about those as well, although honestly for the things I've been doing with XS I've had surprisingly little use for them. It may be that once you feel the need to descend below the level that Perl itself can provide, you've already gone outside the bounds of what Perl arrays and hashes are really good for. The main thing that can be usefully done with hashes and arrays at the C level is, I think, to create them, fill them with something and pass references to them up to the Perl level for later use there (but note that we already passed lists back to Perl, and passing simple hashes is a special case of that with alternating keys and values).
+
+So. Anyway. The reference bit we don't have to think about that much, since the standard typemap takes care of creating them when we declare functions as returning pointers to `HV`s or `AV`s. Let's write a method for the `Example` class that returns a reference to a hash with the contents of the object (that is, keys `x` and `y` with corresponding values).
+
+```
+    HV *
+    attributes(self)
+        Example self;
+        CODE:
+        {
+            HV *hash = newHV();
+            SV **result;
+            result = hv_stores(hash, "x", newSVnv(self->x));
+            if (result == NULL)
+            {
+                croak("Storing value %f to key x failed", self->x);
+            }
+            result = hv_stores(hash, "y", newSVnv(self->y));
+            if (result == NULL)
+            {
+                croak("Storing value %f to key y failed", self->y);
+            }
+            RETVAL = hash;
+        }
+        OUTPUT:
+            RETVAL
+```

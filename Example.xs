@@ -152,3 +152,25 @@ set_y(self, yval)
     double yval;
     CODE:
         self->y = yval;
+
+HV *
+attributes(self)
+    Example self;
+    CODE:
+    {
+        HV *hash = newHV();
+        SV **result;
+        result = hv_stores(hash, "x", newSVnv(self->x));
+        if (result == NULL)
+        {
+            croak("Storing value %f to key x failed", self->x);
+        }
+        result = hv_stores(hash, "y", newSVnv(self->y));
+        if (result == NULL)
+        {
+            croak("Storing value %f to key y failed", self->y);
+        }
+        RETVAL = hash;
+    }
+    OUTPUT:
+        RETVAL
