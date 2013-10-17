@@ -242,3 +242,55 @@ Anyway. In `hello4()` the mortality was handled by the `RETVAL` magic. In `numbe
 ```
 
 At this point you could probably just look up the various functions in perlapi and figure out how this works, but let's talk through it anyway. `EXTEND` is a macro that makes sure there's enough space on the stack. When I try it, the code still seems to work fine without that line, but the way the documentation is worded makes me think that the way it works is that it _may_ work without the `EXTEND`, but that it _will_ work with it. So I left it in. `ST()` is a macro used to access stack entries. Here we use it to put `SV`s on the stack. `sv_2mortal()` does exactly what it says on the label, it turns an `SV` mortal. `newSViv()` creates a fresh new SV holding an IV, and finally `XSRETURN()` returns from the function with three things on the return stack. If the number you give here is less than the number of things you've put on the stack, some things will get lost. If the number you give here is greater than the number of things you put on the stack, whatever garbage was in the extra memory locations will be returned. Which may, depending on circumstances and luck, cause garbage data in your program, your program crashing, the perl interpreter crashing or an exploitable security hole. So make sure to get that number right. Or use the `PUSH` macros, which keep count for you.
+
+# Passing arguments, part 2
+
+Now that we've started looking at the stack, we can also look at the other end of functions returning multiple values. That is, calling them with multiple values. For a fixed number of arguments, it's really easy: just list them at the beginning.
+
+```
+    long
+    sumthese(one, two, three)
+        long one;
+        long two;
+        long three;
+        CODE:
+            RETVAL = one+two+three;
+        OUTPUT:
+            RETVAL
+```
+
+Exercise for the interested reader: what actually happens if you call this from Perl with values that aren't `long`s? Not just what result you get, but what happens along the way to get you that result?
+
+OK, now we can do that. But in Perl it's common with functions that can take a variable number of arguments. _Very_ common, actually. In a way all of them always do, and the sort of limit we've imposed so far is the aberration. So we'd better figure out how to make the variable thing happen at the C level. Fortunately, it's not that hard. We put `...` (that is, literal three period characters) in the argument list after the function name, after any mandatory arguments. Once we've done that, we get a magically created integer variable called `items` that says how many arguments were really passed (including the mandatory ones). We can then pick them off the stack. Here's an example, that provides the highly useful (under extremely limited circumstances) service of telling you how much space has been allocated for string storage for the values it recieves as arguments. It does this by returning a list of values, each corresponding to a provided argument.
+
+```
+    SV *
+    lengths1(...)
+        PPCODE:
+            int i;
+            for(i=0;i<items;i++)
+            {
+                if(SvPOK(ST(i)))
+                {
+                    size_t len = SvLEN(ST(i));
+                    mXPUSHi(len);
+                }
+                else
+                {
+                    mXPUSHi(0);
+                }
+            }
+```
+
+There are two noteworthy things here. The use of an intermediate variable for the length, and the `SvPOK()` macro.
+
+The intermediate value is needed because there is only one stack. The incoming arguments are in the same place the outgoing results will be in. So using `ST(i)` to read from a stack slot while writing to the same slot with `mXPUSHi()` is unlikely to work well. On my machine, it causes a core dump, even. So we read first, remember what we read, and then store a result.
+
+`SvPOK()` is used here to check that the `SV` we're getting the string storage size for actually has a string value. We haven't needed to do that sort of check before, since with named arguments we have had typemaps to force the Perl values into what we asked for. But now that we're picking things straight off the stack (and never told Perl what we want in the first place), we need to check ourselves that the values make sense for our needs. As you may already have seen in perlapi, there is a large variety of different macros for this. Some of them simply check, like the one we use here. Others actually force the value to be converted to what we need (which sometimes can result in a loss of information, so be careful). Anyway, here we simply check if the `SV` is valid as a string, and if it is we add an `SvIV` with the length of the string buffer to the stack. If it's not valid as a string, we assume that it never had a string buffer allocated and push a zero value.
+
+If you haven't figured out the exercise for the reader after the previous example, you can get a hint from this one by adding a mandatory first argument of type `char *`, call it with a series of numbers and watch the results.
+
+So now we can both accept and return variable numbers of arguments. Sweet! We're done! ...or maybe not quite. We haven't looked at actual arrays yet. Or hashes. Or references. Or, perhaps most interesting, objects. Let's start with arrays and hashes.
+
+# Containers
+

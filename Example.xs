@@ -72,14 +72,29 @@ numbers2()
         ST(2) = sv_2mortal(newSViv(4711));
         XSRETURN(3);
 
-int
-testing(...)
+long
+sumthese(one, two, three)
+    long one;
+    long two;
+    long three;
     CODE:
+        RETVAL = one+two+three;
+    OUTPUT:
+        RETVAL
+
+SV *
+lengths1(...)
+    PPCODE:
         int i;
         for(i=0;i<items;i++)
         {
-            printf("Testing (%s)\n", SvPV_nolen(ST(i)));
+            if(SvPOK(ST(i)))
+            {
+                size_t len = SvLEN(ST(i));
+                mXPUSHi(len);
+            }
+            else
+            {
+                mXPUSHi(0);
+            }
         }
-        RETVAL = 17;
-    OUTPUT:
-        RETVAL
