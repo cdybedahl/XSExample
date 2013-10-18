@@ -174,3 +174,25 @@ attributes(self)
     }
     OUTPUT:
         RETVAL
+
+AV *
+value_aref(self)
+    Example self;
+    CODE:
+    {
+        AV *ary = newAV();
+        SV **result;
+        result = av_store(ary, 0, newSVnv(self->x));
+        if (result == NULL)
+        {
+            croak("Storing value %f to position 0 failed", self->x);
+        }
+        result = av_store(ary, 1, newSVnv(self->y));
+        if (result == NULL)
+        {
+            croak("Storing value %f to position 1 failed", self->y);
+        }
+        RETVAL = ary;
+    }
+    OUTPUT:
+        RETVAL
