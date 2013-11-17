@@ -33,18 +33,18 @@ On the top level we need a `Makefile.PL`. It's not very complicated either.
     );
 ```
 
-There. Now you can do `make; make test; make install`. Sure, the test stage will only say that no tests are defined and the module doesn't actually do anything at all, but you can. It's a valid module, and it can be installed. It's a safe, comfortable starting point. Let's move on and put in the stuff we need to make C code callable from Perl. First, we need to expand on `Example.pm` a bit, so it looks like this:
+There. Now you can do `perl Makefile.PL; make; make test; make install`. Sure, the test stage will only say that no tests are defined and the module doesn't actually do anything at all, but you can. It's a valid module, and it can be installed. It's a safe, comfortable starting point. Let's move on and put in the stuff we need to make C code callable from Perl. First, we need to expand on `Example.pm` a bit, so it looks like this:
 
 ```perl
     package Example;
     
     require XSLoader;
-    XSLoader::load();
+    XSLoader::load(__PACKAGE__, $VERSION);
     
     1;
 ```
 
-`XSLoader` was added to core in Perl version 5.6.0, by the way. If you want your module to work on Perls older than that, you're seriously on your own. You'll probably want to start by reading the docs for `DynaLoader`.
+`XSLoader` was added to core in Perl version 5.6.0, by the way. If you want your module to work on Perls older than that, you're seriously on your own. You'll probably want to start by reading the docs for `DynaLoader`. Oh, and somewhere between 5.12 and 5.18 the need to have the arguments in the call to `XSLoader::load()` went away.
 
 Now it's time to add the file where the actual Perl/C glue is going to live. Well, the main parts of it, anyway. It should be at the top level (as long as we're using `MakeMaker`, at least) and be named the same as the module, but with the suffix `.xs` instead of `.pm`. So, in our case `Example.xs`. It should start with these lines:
 
@@ -68,9 +68,9 @@ There. Now you have a file called `ppport.h`. So far, so good. Now try this:
 
     perl ppport.h --help
 
-Yes, that C header file is also a Perl script. Who came up with _that_ idea, I don't know. It's a script that'll look through your `.xs` file and suggest changes that'll make your code more compatible between Perl versions. Which is certainly useful, it's just not the world's most intuitive place to put a tool. In my opinion, at least.
+Yes, that C header file is also a Perl script. Who came up with _that_ idea, I don't know. It's a script that'll look through your `.xs` file and suggest changes that'll make your code more compatible between Perl versions. Which is certainly useful, it's just not the world's most intuitive place to put a tool. In my opinion, at least. If you want to know more about it, `perldoc ppport.h` works.
 
-Anyway, at this point you should be able to do `perl Makefile.PL && make` and see messages from the C compiler. Successful ones, hopefully. On my machine it produces an object file `Example.bs` that's zero bytes long. Which makes sense, since it doesn't actually have any functions. So let's add one. Below the `MODULE` line, add this:
+Anyway, at this point you should be able to do `perl Makefile.PL && make` and see messages from the C compiler. Successful ones, hopefully. On my machine it produces an object file `Example.bs` that's zero bytes long. Which makes sense, since it doesn't actually have any functions. So let's add one. Below the `MODULE` line in `Example.xs`, add this:
 
 ```
     void
@@ -325,7 +325,7 @@ So far so good. The next thing we need is a constructor. Traditionally, that's a
         double yval;
         CODE:
         {
-            Example obj;
+            Example self;
     
             Newx(self, 1, point);
             self->x = xval;
