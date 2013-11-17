@@ -153,6 +153,18 @@ set_y(self, yval)
     CODE:
         self->y = yval;
 
+double
+x(self,...)
+    Example self;
+    CODE:
+        if (items > 1)
+        {
+            self->x = SvNV(ST(1));
+        }
+        RETVAL = self->x;
+    OUTPUT:
+        RETVAL
+
 HV *
 attributes(self)
     Example self;
