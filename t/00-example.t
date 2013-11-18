@@ -25,7 +25,7 @@ is($obj->get_x, 0.0);
 is($obj->get_y, 0.0);
 is($obj->x(17), 17.0);
 
-is_deeply([ values( %{$obj->attributes} ) ], [ 17,0 ]);
+is_deeply([ sort values( %{$obj->attributes} ) ], [ 0, 17 ]);
 is_deeply( $obj->value_aref, [17,0]);
 
 done_testing;
